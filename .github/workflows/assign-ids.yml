@@ -2,38 +2,40 @@ name: Assign IDs
 
 on:
   push:
-    branches: master
+    branches: main
 
 jobs:
   assign-ids:
     name: Assign IDs
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Cache cargo bin
-      uses: actions/cache@v1
+      id: admin-cache
+      uses: actions/cache@v4
       with:
         path: ~/.cargo/bin
-        key: rustsec-admin-v0.3.1
+        key: rustsec-admin-b7c69254bda9b8f4c94bc5eaef47e5bb3a97d8cd
 
     - name: Install rustsec-admin
-      run: |
-        if [ ! -f $HOME/.cargo/bin/rustsec-admin ]; then
-            cargo install rustsec-admin --vers 0.3.1
-        fi
+      if: steps.admin-cache.outputs.cache-hit != 'true'
+      run: cargo install --git https://github.com/rustsec/rustsec rustsec-admin --rev b7c69254bda9b8f4c94bc5eaef47e5bb3a97d8cd
 
     - name: Assign IDs
       id: assign
       run: |
         message=$(rustsec-admin assign-id --github-actions-output)
-        echo "::set-output name=commit_message::${message}"
+        echo "commit_message=${message}" >> $GITHUB_OUTPUT
 
-    - name: Lint advisories
-      run: rustsec-admin lint
+    - name: Create duplicate ID assignment guard
+      run: |
+        echo "This file causes merge conflicts if two ID assignment jobs run concurrently." > .duplicate-id-guard
+        echo "This prevents duplicate ID assignment due to a race between those jobs." >> .duplicate-id-guard
+        ls -R ./crates/ ./rust/ | sha256sum >> .duplicate-id-guard
 
     - name: Create pull request
-      uses: peter-evans/create-pull-request@v3
+      uses: peter-evans/create-pull-request@v7
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         commit-message: ${{ steps.assign.outputs.commit_message }}
